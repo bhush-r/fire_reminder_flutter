@@ -26,5 +26,10 @@ void main() {
     // Verify that our counter has incremented.
     expect(find.text('0'), findsNothing);
     expect(find.text('1'), findsOneWidget);
+
+    // Basic app verification
+    // Since we updated the UI, we check for the new welcoming text
+    expect(find.text('Fire Reminder'), findsOneWidget);
+    expect(find.text('Google ke saath shuru karein'), findsOneWidget);
   });
 }
