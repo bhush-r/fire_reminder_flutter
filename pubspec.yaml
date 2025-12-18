@@ -35,6 +35,29 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+
+  # ================= STATE MANAGEMENT =================
+  flutter_riverpod: ^2.5.1
+
+  # ================= FIREBASE =================
+  firebase_core: ^3.4.0
+  firebase_auth: ^5.1.0
+  cloud_firestore: ^5.4.0
+
+  # ================= DATE / FORMAT =================
+  intl: ^0.19.0
+
+  # ================= URL / WHATSAPP / CALL =================
+  url_launcher: ^6.3.0
+
+  # ================= EXPORT =================
+  pdf: ^3.11.0
+  excel: ^4.0.2
+  share_plus: ^10.0.0
+
+  # ================= CHARTS =================
+  fl_chart: ^0.69.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
