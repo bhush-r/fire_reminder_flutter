@@ -1,11 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'navigation/app_router.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'navigation/app_shell.dart';
 import 'core/theme/app_theme.dart';
+import 'features/auth/auth_screen.dart';
+import 'features/auth/auth_controller.dart';
 
-void main() async {
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: FireReminderApp()));
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  runApp(
+    const ProviderScope(
+      child: FireReminderApp(),
+    ),
+  );
 }
 
 class FireReminderApp extends StatelessWidget {
@@ -13,10 +27,19 @@ class FireReminderApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
+    return MaterialApp(
       title: 'Fire Reminder',
       theme: AppTheme.lightTheme,
-      routerConfig: AppRouter.router,
+      home: Consumer(
+        builder: (context, ref, _) {
+          final user = ref.watch(authControllerProvider);
+
+          if (user == null) {
+            return const AuthScreen();
+          }
+          return const AppShell();
+        },
+      ),
       debugShowCheckedModeBanner: false,
     );
   }

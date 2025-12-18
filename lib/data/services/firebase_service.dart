@@ -1,0 +1,66 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/loan_model.dart';
+import '../models/loan_status.dart';
+
+class FirebaseService {
+  static final _db = FirebaseFirestore.instance;
+
+  static Stream<List<Loan>> listenLoans(String uid) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('loans')
+        .orderBy('dueDate')
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map((doc) => _fromDoc(doc)).toList(),
+        );
+  }
+
+  static Future<void> saveLoan(String uid, Loan loan) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('loans')
+        .doc(loan.id)
+        .set(_toMap(loan));
+  }
+
+  static Future<void> deleteLoan(String uid, String loanId) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('loans')
+        .doc(loanId)
+        .delete();
+  }
+
+  static Loan _fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return Loan(
+      id: doc.id,
+      customerName: d['name'],
+      phone: d['phone'],
+      principal: d['principal'],
+      interestRate: d['rate'],
+      totalAmount: d['total'],
+      paidAmount: d['paid'],
+      givenDate: (d['givenDate'] as Timestamp).toDate(),
+      dueDate: (d['dueDate'] as Timestamp).toDate(),
+      status: LoanStatus.values.byName(d['status']),
+    );
+  }
+
+  static Map<String, dynamic> _toMap(Loan l) => {
+        'name': l.customerName,
+        'phone': l.phone,
+        'principal': l.principal,
+        'rate': l.interestRate,
+        'total': l.totalAmount,
+        'paid': l.paidAmount,
+        'givenDate': Timestamp.fromDate(l.givenDate),
+        'dueDate': Timestamp.fromDate(l.dueDate),
+        'status': l.status.name,
+      };
+}

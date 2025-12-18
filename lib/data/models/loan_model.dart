@@ -24,4 +24,22 @@ class Loan {
     required this.dueDate,
     required this.status,
   });
+
+  Loan copyWith({
+    double? paidAmount,
+    LoanStatus? status,
+  }) {
+    return Loan(
+      id: id,
+      customerName: customerName,
+      phone: phone,
+      principal: principal,
+      interestRate: interestRate,
+      totalAmount: totalAmount,
+      paidAmount: paidAmount ?? this.paidAmount,
+      givenDate: givenDate,
+      dueDate: dueDate,
+      status: status ?? this.status,
+    );
+  }
 }

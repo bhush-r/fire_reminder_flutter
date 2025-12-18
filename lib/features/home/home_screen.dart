@@ -1,8 +1,6 @@
-package com.example.fire_reminder_flutter.features.home;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/models/loan_model.dart';
+// Removed unused import: '../../data/models/loan_model.dart'
 import '../../data/models/loan_status.dart';
 import '../loan/add_loan_screen.dart';
 import '../loan/loan_controller.dart';
@@ -36,7 +34,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final totalPending = filteredLoans.fold<double>(
       0,
-      (sum, l) => sum + (l.totalAmount - l.paidAmount),
+          (sum, l) => sum + (l.totalAmount - l.paidAmount),
     );
 
     return Scaffold(
@@ -71,7 +69,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: Column(
         children: [
-          // 🔍 SEARCH
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -82,8 +79,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onChanged: (v) => setState(() => searchQuery = v),
             ),
           ),
-
-          // 📊 SUMMARY
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Card(
@@ -94,20 +89,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 8),
-
-          // 📋 LIST
           Expanded(
             child: filteredLoans.isEmpty
                 ? const Center(child: Text("No loans found"))
                 : ListView.builder(
-                    itemCount: filteredLoans.length,
-                    itemBuilder: (context, index) {
-                      final loan = filteredLoans[index];
-                      return LoanCard(loan: loan);
-                    },
-                  ),
+              itemCount: filteredLoans.length,
+              itemBuilder: (context, index) {
+                final loan = filteredLoans[index];
+                return LoanCard(loan: loan);
+              },
+            ),
           ),
         ],
       ),

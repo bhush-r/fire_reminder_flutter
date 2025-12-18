@@ -1,5 +1,3 @@
-package com.example.fire_reminder_flutter.features.loan;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/loan_calculator.dart';
@@ -59,7 +57,6 @@ class LoanDetailScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // 🔹 SUMMARY
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -75,9 +72,9 @@ class LoanDetailScreen extends ConsumerWidget {
                     const SizedBox(height: 8),
                     Chip(
                       label: Text(loan.status.name.toUpperCase()),
-                      backgroundColor: statusColor().withOpacity(0.15),
+                      backgroundColor: statusColor().withValues(alpha: 0.15),
                       labelStyle:
-                          TextStyle(color: statusColor(), fontWeight: FontWeight.bold),
+                      TextStyle(color: statusColor(), fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -89,10 +86,7 @@ class LoanDetailScreen extends ConsumerWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
-
-            // 📞 ACTIONS
             Row(
               children: [
                 Expanded(
@@ -117,10 +111,7 @@ class LoanDetailScreen extends ConsumerWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 16),
-
-            // 📤 EXPORT
             Row(
               children: [
                 Expanded(
@@ -142,10 +133,7 @@ class LoanDetailScreen extends ConsumerWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 24),
-
-            // 📋 DETAILS
             _detail("Phone", loan.phone),
             _detail("Principal", "₹${loan.principal}"),
             _detail("Interest", "${loan.interestRate}% / month"),
@@ -153,10 +141,7 @@ class LoanDetailScreen extends ConsumerWidget {
             _detail("Paid", "₹${loan.paidAmount}"),
             _detail("Given Date", _fmt(loan.givenDate)),
             _detail("Due Date", _fmt(loan.dueDate)),
-
             const SizedBox(height: 24),
-
-            // 💰 RECORD PAYMENT
             if (pending > 0)
               SizedBox(
                 width: double.infinity,

@@ -1,5 +1,3 @@
-package com.example.fire_reminder_flutter.features.loan;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/loan_calculator.dart';
@@ -73,7 +71,6 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
 
               const SizedBox(height: 12),
 
-              // 📞 PHONE (+91 FIXED)
               TextFormField(
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
@@ -124,7 +121,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
               const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
-                value: paymentType,
+                initialValue: paymentType, // Changed from 'value'
                 items: const [
                   DropdownMenuItem(value: "Cash", child: Text("Cash")),
                   DropdownMenuItem(value: "Online", child: Text("Online")),
@@ -164,15 +161,15 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     ref.read(loanControllerProvider.notifier).saveLoan(
-          existingId: widget.existingLoan?.id,
-          name: nameCtrl.text.trim(),
-          phone: "+91${phoneCtrl.text}",
-          principal: double.parse(principalCtrl.text),
-          rate: double.parse(rateCtrl.text),
-          givenDate: givenDate,
-          dueDate: dueDate,
-          paymentType: paymentType,
-        );
+      existingId: widget.existingLoan?.id,
+      name: nameCtrl.text.trim(),
+      phone: "+91${phoneCtrl.text}",
+      principal: double.parse(principalCtrl.text),
+      rate: double.parse(rateCtrl.text),
+      givenDate: givenDate,
+      dueDate: dueDate,
+      paymentType: paymentType,
+    );
 
     Navigator.pop(context);
   }
