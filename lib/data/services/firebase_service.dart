@@ -5,11 +5,11 @@ import '../models/loan_status.dart';
 class FirebaseService {
   static final _db = FirebaseFirestore.instance;
 
-  // Updated to match your actual Firebase Project ID from firebase_options.dart
+  // Use the Project ID as the appId for the mandatory artifacts path structure
   static const String _appId = 'fireapp-94831';
 
-  // Path strategy as per environment mandatory rules
   static CollectionReference _getLoanCollection(String uid) {
+    // RULE 1: Strict Paths enforced by environment
     return _db
         .collection('artifacts')
         .doc(_appId)
@@ -19,9 +19,7 @@ class FirebaseService {
   }
 
   static Stream<List<Loan>> listenLoans(String uid) {
-    // Ensuring we have a valid UID before listening
     return _getLoanCollection(uid)
-        .orderBy('dueDate', descending: false)
         .snapshots()
         .map(
           (snapshot) =>
@@ -54,6 +52,7 @@ class FirebaseService {
       givenDate: (d['givenDate'] as Timestamp).toDate(),
       dueDate: (d['dueDate'] as Timestamp).toDate(),
       status: LoanStatus.values.byName(d['status'] ?? 'pending'),
+      paymentType: d['paymentType'] ?? 'Cash',
       history: historyList,
     );
   }
@@ -68,6 +67,7 @@ class FirebaseService {
     'givenDate': Timestamp.fromDate(l.givenDate),
     'dueDate': Timestamp.fromDate(l.dueDate),
     'status': l.status.name,
+    'paymentType': l.paymentType,
     'history': l.history.map((h) => h.toMap()).toList(),
   };
 }

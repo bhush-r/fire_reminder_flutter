@@ -18,14 +18,21 @@ class LoanDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pending = loan.totalAmount - loan.paidAmount;
-    final daysRemaining = LoanCalculator.daysRemaining(loan.dueDate);
+    // Use the latest data from state if available (prevents stale UI after recordPayment)
+    final latestLoans = ref.watch(loanControllerProvider);
+    final currentLoan = latestLoans.isEmpty
+        ? loan
+        : latestLoans.firstWhere((l) => l.id == loan.id, orElse: () => loan);
+
+    final pending = currentLoan.remainingAmount;
+    final daysRemaining = LoanCalculator.daysRemaining(currentLoan.dueDate);
+    final status = currentLoan.calculatedStatus;
 
     Color statusColor() {
-      switch (loan.status) {
+      switch (status) {
         case LoanStatus.paid: return AppColors.success;
         case LoanStatus.overdue: return AppColors.danger;
-        case LoanStatus.dueSoon: return AppColors.warning;
+        case LoanStatus.partial: return AppColors.warning;
         default: return AppColors.primary;
       }
     }
@@ -36,11 +43,11 @@ class LoanDetailScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddLoanScreen(existingLoan: loan))),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddLoanScreen(existingLoan: currentLoan))),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: AppColors.danger),
-            onPressed: () => _confirmDelete(context, ref),
+            onPressed: () => _confirmDelete(context, ref, currentLoan),
           ),
         ],
       ),
@@ -52,17 +59,17 @@ class LoanDetailScreen extends ConsumerWidget {
               children: [
                 CircleAvatar(
                   radius: 40,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
                   child: const Icon(Icons.person, size: 40, color: AppColors.primary),
                 ),
                 const SizedBox(height: 16),
-                Text(loan.customerName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                Text(loan.phone, style: const TextStyle(color: AppColors.textSecondary)),
+                Text(currentLoan.customerName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(currentLoan.phone, style: const TextStyle(color: AppColors.textSecondary)),
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  decoration: BoxDecoration(color: statusColor().withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                  child: Text(loan.status.name.toUpperCase(), style: TextStyle(color: statusColor(), fontWeight: FontWeight.bold)),
+                  decoration: BoxDecoration(color: statusColor().withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                  child: Text(status.name.toUpperCase(), style: TextStyle(color: statusColor(), fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -79,9 +86,9 @@ class LoanDetailScreen extends ConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _statItem("Principal", "₹${loan.principal.toInt()}"),
-                      _statItem("Interest", "${loan.interestRate}%"),
-                      _statItem("Total", "₹${loan.totalAmount.toInt()}"),
+                      _statItem("Principal", "₹${currentLoan.principal.toInt()}"),
+                      _statItem("Interest", "${currentLoan.interestRate}%"),
+                      _statItem("Total", "₹${currentLoan.totalAmount.toInt()}"),
                     ],
                   ),
                 ],
@@ -90,15 +97,14 @@ class LoanDetailScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             Row(
               children: [
-                Expanded(child: _actionBtn(icon: Icons.call, label: "Call", color: AppColors.info, onTap: () => WhatsAppUtil.call(loan.phone))),
+                Expanded(child: _actionBtn(icon: Icons.call, label: "Call", color: AppColors.info, onTap: () => WhatsAppUtil.call(currentLoan.phone))),
                 const SizedBox(width: 12),
-                Expanded(child: _actionBtn(icon: Icons.chat_bubble_outline, label: "WhatsApp", color: AppColors.success, onTap: () => WhatsAppUtil.sendReminder(phone: loan.phone, name: loan.customerName, pending: pending, daysRemaining: daysRemaining))),
+                Expanded(child: _actionBtn(icon: Icons.chat_bubble_outline, label: "WhatsApp", color: AppColors.success, onTap: () => WhatsAppUtil.sendReminder(phone: currentLoan.phone, name: currentLoan.customerName, pending: pending, daysRemaining: daysRemaining))),
               ],
             ),
             const SizedBox(height: 24),
 
-            // PAYMENT HISTORY SECTION
-            if (loan.history.isNotEmpty) ...[
+            if (currentLoan.history.isNotEmpty) ...[
               const Align(alignment: Alignment.centerLeft, child: Text("Payment History", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
               const SizedBox(height: 12),
               Container(
@@ -106,10 +112,10 @@ class LoanDetailScreen extends ConsumerWidget {
                 child: ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: loan.history.length,
+                  itemCount: currentLoan.history.length,
                   separatorBuilder: (context, index) => const Divider(height: 1),
                   itemBuilder: (context, index) {
-                    final tx = loan.history.reversed.toList()[index];
+                    final tx = currentLoan.history.reversed.toList()[index];
                     return ListTile(
                       leading: const Icon(Icons.check_circle, color: AppColors.success, size: 20),
                       title: Text("Received ₹${tx.amount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -121,17 +127,18 @@ class LoanDetailScreen extends ConsumerWidget {
               const SizedBox(height: 24),
             ],
 
-            _infoTile(Icons.calendar_today_outlined, "Given Date", _fmt(loan.givenDate)),
-            _infoTile(Icons.event_note_outlined, "Due Date", _fmt(loan.dueDate)),
+            _infoTile(Icons.calendar_today_outlined, "Given Date", _fmt(currentLoan.givenDate)),
+            _infoTile(Icons.event_note_outlined, "Due Date", _fmt(currentLoan.dueDate)),
+            _infoTile(Icons.payment_outlined, "Payment Mode", currentLoan.paymentType),
             const SizedBox(height: 32),
             if (pending > 0)
-              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => _showPaymentDialog(context, ref, pending), child: const Text("Record Payment"))),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => _showPaymentDialog(context, ref, currentLoan, pending), child: const Text("Record Payment"))),
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: OutlinedButton.icon(onPressed: () => ExcelExportService.exportSingleLoan(context, loan), icon: const Icon(Icons.table_view), label: const Text("Excel"))),
+                Expanded(child: OutlinedButton.icon(onPressed: () => ExcelExportService.exportSingleLoan(context, currentLoan), icon: const Icon(Icons.table_view), label: const Text("Excel"))),
                 const SizedBox(width: 12),
-                Expanded(child: OutlinedButton.icon(onPressed: () => PdfExportService.exportSingleLoan(context, loan), icon: const Icon(Icons.picture_as_pdf), label: const Text("PDF"))),
+                Expanded(child: OutlinedButton.icon(onPressed: () => PdfExportService.exportSingleLoan(context, currentLoan), icon: const Icon(Icons.picture_as_pdf), label: const Text("PDF"))),
               ],
             ),
           ],
@@ -142,36 +149,50 @@ class LoanDetailScreen extends ConsumerWidget {
 
   Widget _statItem(String label, String val) => Column(children: [Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)), Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))]);
 
-  Widget _actionBtn({required IconData icon, required String label, required Color color, required VoidCallback onTap}) => InkWell(onTap: onTap, child: Container(padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: Column(children: [Icon(icon, color: color), const SizedBox(height: 4), Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))])));
+  Widget _actionBtn({required IconData icon, required String label, required Color color, required VoidCallback onTap}) => InkWell(onTap: onTap, child: Container(padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Column(children: [Icon(icon, color: color), const SizedBox(height: 4), Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))])));
 
   Widget _infoTile(IconData icon, String label, String val) => ListTile(leading: Icon(icon, color: AppColors.textSecondary, size: 20), title: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)), trailing: Text(val, style: const TextStyle(fontWeight: FontWeight.bold)));
 
   String _fmt(DateTime d) => "${d.day}/${d.month}/${d.year}";
 
-  void _confirmDelete(BuildContext context, WidgetRef ref) {
+  void _confirmDelete(BuildContext context, WidgetRef ref, Loan currentLoan) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text("Delete Loan?"),
-        content: const Text("Kya aap waqai is loan ko delete karna chahte hain?"),
+        content: const Text("Are you sure you want to delete this loan record?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: AppColors.danger), onPressed: () { ref.read(loanControllerProvider.notifier).deleteLoan(loan.id); Navigator.pop(context); Navigator.pop(context); }, child: const Text("Delete")),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: AppColors.danger), onPressed: () { ref.read(loanControllerProvider.notifier).deleteLoan(currentLoan.id); Navigator.pop(context); Navigator.pop(context); }, child: const Text("Delete")),
         ],
       ),
     );
   }
 
-  void _showPaymentDialog(BuildContext context, WidgetRef ref, double pending) {
+  void _showPaymentDialog(BuildContext context, WidgetRef ref, Loan currentLoan, double pending) {
     final ctrl = TextEditingController();
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text("Record Payment"),
-        content: TextField(controller: ctrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Amount (₹)")),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: "Amount (₹)",
+            hintText: "Max: ₹${pending.toStringAsFixed(0)}",
+          ),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          FilledButton(onPressed: () { final amt = double.tryParse(ctrl.text); if (amt != null && amt > 0 && amt <= pending) { ref.read(loanControllerProvider.notifier).recordPayment(loan.id, amt); Navigator.pop(context); } }, child: const Text("Confirm Payment")),
+          FilledButton(onPressed: () {
+            final cleanedText = ctrl.text.replaceAll(RegExp(r'[^0-9.]'), '');
+            final amt = double.tryParse(cleanedText);
+            if (amt != null && amt > 0 && amt <= (pending + 0.01)) {
+              ref.read(loanControllerProvider.notifier).recordPayment(currentLoan.id, amt);
+              Navigator.pop(context);
+            }
+          }, child: const Text("Confirm Payment")),
         ],
       ),
     );

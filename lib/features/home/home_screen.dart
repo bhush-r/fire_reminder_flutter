@@ -5,6 +5,9 @@ import '../../data/models/loan_status.dart';
 import '../loan/add_loan_screen.dart';
 import '../loan/loan_controller.dart';
 import '../loan/widgets/loan_card.dart';
+import '../../core/theme/app_colors.dart';
+
+enum SortOption { dueDateAsc, dueDateDesc, amountAsc, amountDesc }
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String searchQuery = "";
   LoanStatus? filterStatus;
+  SortOption _currentSort = SortOption.dueDateAsc;
 
   @override
   Widget build(BuildContext context) {
@@ -25,68 +29,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final matchesSearch =
           loan.customerName.toLowerCase().contains(searchQuery.toLowerCase()) ||
               loan.phone.contains(searchQuery);
-
       final matchesStatus =
-          filterStatus == null || loan.status == filterStatus;
-
+          filterStatus == null || loan.calculatedStatus == filterStatus;
       return matchesSearch && matchesStatus;
     }).toList();
 
-    final totalPending = filteredLoans.fold<double>(
-      0,
-          (sum, l) => sum + (l.totalAmount - l.paidAmount),
-    );
+    filteredLoans.sort((a, b) {
+      switch (_currentSort) {
+        case SortOption.dueDateAsc:
+          return a.dueDate.compareTo(b.dueDate);
+        case SortOption.dueDateDesc:
+          return b.dueDate.compareTo(a.dueDate);
+        case SortOption.amountAsc:
+          return a.totalAmount.compareTo(b.totalAmount);
+        case SortOption.amountDesc:
+          return b.totalAmount.compareTo(a.totalAmount);
+      }
+    });
+
+    final counts = {
+      for (var s in LoanStatus.values)
+        s: loans.where((l) => l.calculatedStatus == s).length
+    };
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Loan Dashboard"),
         actions: [
-          PopupMenuButton<LoanStatus?>(
-            onSelected: (value) {
-              setState(() => filterStatus = value);
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: null, child: Text("All")),
-              const PopupMenuItem(
-                  value: LoanStatus.pending, child: Text("Pending")),
-              const PopupMenuItem(
-                  value: LoanStatus.paid, child: Text("Paid")),
-              const PopupMenuItem(
-                  value: LoanStatus.overdue, child: Text("Overdue")),
+          PopupMenuButton<SortOption>(
+            icon: const Icon(Icons.sort),
+            onSelected: (val) => setState(() => _currentSort = val),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: SortOption.dueDateAsc, child: Text("Due Date (Soonest)")),
+              const PopupMenuItem(value: SortOption.dueDateDesc, child: Text("Due Date (Latest)")),
+              const PopupMenuItem(value: SortOption.amountAsc, child: Text("Amount (Low to High)")),
+              const PopupMenuItem(value: SortOption.amountDesc, child: Text("Amount (High to Low)")),
             ],
-            icon: const Icon(Icons.filter_list),
-          )
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AddLoanScreen()),
-          );
-        },
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddLoanScreen())),
         child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               decoration: const InputDecoration(
                 hintText: "Search name or phone",
                 prefixIcon: Icon(Icons.search),
+                contentPadding: EdgeInsets.symmetric(vertical: 0),
               ),
               onChanged: (v) => setState(() => searchQuery = v),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              child: ListTile(
-                title: const Text("Total Pending"),
-                subtitle: Text("₹${totalPending.toStringAsFixed(2)}"),
-                trailing: const Icon(Icons.trending_up),
-              ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                _filterChip(null, loans.length, "All"),
+                ...LoanStatus.values.map((s) => _filterChip(s, counts[s] ?? 0, s.name)),
+              ],
             ),
           ),
           const SizedBox(height: 8),
@@ -95,13 +101,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ? const Center(child: Text("No loans found"))
                 : ListView.builder(
               itemCount: filteredLoans.length,
-              itemBuilder: (context, index) {
-                final loan = filteredLoans[index];
-                return LoanCard(loan: loan);
-              },
+              itemBuilder: (context, index) => LoanCard(loan: filteredLoans[index]),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _filterChip(LoanStatus? status, int count, String label) {
+    final isSelected = filterStatus == status;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text("${label.toUpperCase()} ($count)"),
+        selected: isSelected,
+        onSelected: (val) => setState(() => filterStatus = val ? status : null),
+        selectedColor: AppColors.primary.withOpacity(0.2),
+        checkmarkColor: AppColors.primary,
+        labelStyle: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: isSelected ? AppColors.primary : Colors.grey,
+        ),
       ),
     );
   }

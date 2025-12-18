@@ -10,15 +10,15 @@ class LoanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = loan.totalAmount - loan.paidAmount;
+    final status = loan.calculatedStatus;
 
     Color statusColor() {
-      switch (loan.status) {
+      switch (status) {
         case LoanStatus.paid:
           return Colors.green;
         case LoanStatus.overdue:
           return Colors.red;
-        case LoanStatus.dueSoon:
+        case LoanStatus.partial:
           return Colors.orange;
         default:
           return Colors.blue;
@@ -36,29 +36,63 @@ class LoanCard extends StatelessWidget {
             ),
           );
         },
-        title: Text(loan.customerName),
+        title: Row(
+          children: [
+            Expanded(child: Text(loan.customerName, style: const TextStyle(fontWeight: FontWeight.bold))),
+            if (loan.overdueDays > 0)
+              Text(
+                "Overdue ${loan.overdueDays}d",
+                style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+          ],
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(loan.phone),
-            Text("Pending: ₹${pending.toStringAsFixed(2)}"),
+            Text(loan.phone, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _amountInfo("Total", loan.totalAmount),
+                _amountInfo("Paid", loan.paidAmount),
+                _amountInfo("Left", loan.remainingAmount, isBold: true),
+              ],
+            ),
           ],
         ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: statusColor().withValues(alpha: 0.1),
+            color: statusColor().withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
-            loan.status.name.toUpperCase(),
+            status.name.toUpperCase(),
             style: TextStyle(
               color: statusColor(),
+              fontSize: 10,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _amountInfo(String label, double val, {bool isBold = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(
+          "₹${val.toStringAsFixed(0)}",
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ],
     );
   }
 }

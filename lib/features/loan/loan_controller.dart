@@ -53,6 +53,13 @@ class LoanController extends StateNotifier<List<Loan>> {
       dueDate: dueDate,
     );
 
+    Loan? existingLoan;
+    if (existingId != null) {
+      try {
+        existingLoan = state.firstWhere((l) => l.id == existingId);
+      } catch (_) {}
+    }
+
     final loanId = existingId ?? DateTime.now().millisecondsSinceEpoch.toString();
 
     final loan = Loan(
@@ -62,11 +69,12 @@ class LoanController extends StateNotifier<List<Loan>> {
       principal: principal,
       interestRate: rate,
       totalAmount: total,
-      paidAmount: 0,
+      paidAmount: existingLoan?.paidAmount ?? 0,
       givenDate: givenDate,
       dueDate: dueDate,
-      status: LoanStatus.pending,
-      history: [],
+      status: existingLoan?.status ?? LoanStatus.pending,
+      paymentType: paymentType,
+      history: existingLoan?.history ?? [],
     );
 
     await FirebaseService.saveLoan(user!.uid, loan);
