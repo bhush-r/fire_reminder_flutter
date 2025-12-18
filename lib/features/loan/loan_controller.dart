@@ -5,26 +5,31 @@ import '../../core/utils/loan_calculator.dart';
 import '../../data/models/loan_model.dart';
 import '../../data/models/loan_status.dart';
 import '../../data/services/firebase_service.dart';
+import '../auth/auth_controller.dart';
 
 final loanControllerProvider =
 StateNotifierProvider<LoanController, List<Loan>>(
-      (ref) => LoanController(ref),
+      (ref) {
+    final user = ref.watch(authControllerProvider);
+    return LoanController(ref, user);
+  },
 );
 
 class LoanController extends StateNotifier<List<Loan>> {
   final Ref ref;
+  final User? user;
   StreamSubscription? _sub;
 
-  LoanController(this.ref) : super([]) {
-    _listenToLoans();
+  LoanController(this.ref, this.user) : super([]) {
+    if (user != null) {
+      _listenToLoans();
+    }
   }
 
   void _listenToLoans() {
-    final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     _sub?.cancel();
-    _sub = FirebaseService.listenLoans(user.uid).listen(
+    _sub = FirebaseService.listenLoans(user!.uid).listen(
           (loans) => state = loans,
     );
   }
@@ -39,19 +44,19 @@ class LoanController extends StateNotifier<List<Loan>> {
     required DateTime dueDate,
     required String paymentType,
   }) async {
-    // Removed unused 'months' variable
+    if (user == null) return;
 
-    final total =
-    calculateTotalAmount(
+    final total = calculateTotalAmount(
       principal: principal,
       ratePerMonth: rate,
       givenDate: givenDate,
       dueDate: dueDate,
     );
 
+    final loanId = existingId ?? DateTime.now().millisecondsSinceEpoch.toString();
+
     final loan = Loan(
-      id: existingId ??
-          DateTime.now().millisecondsSinceEpoch.toString(),
+      id: loanId,
       customerName: name,
       phone: phone,
       principal: principal,
@@ -61,36 +66,40 @@ class LoanController extends StateNotifier<List<Loan>> {
       givenDate: givenDate,
       dueDate: dueDate,
       status: LoanStatus.pending,
+      history: [],
     );
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    await FirebaseService.saveLoan(user.uid, loan);
+    await FirebaseService.saveLoan(user!.uid, loan);
   }
 
   Future<void> recordPayment(String loanId, double amount) async {
-    final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     final loan = state.firstWhere((l) => l.id == loanId);
     final newPaid = loan.paidAmount + amount;
 
+    final log = TransactionLog(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      amount: amount,
+      date: DateTime.now(),
+    );
+
+    final updatedHistory = List<TransactionLog>.from(loan.history)..add(log);
+
     final updated = loan.copyWith(
       paidAmount: newPaid,
+      history: updatedHistory,
       status: newPaid >= loan.totalAmount
           ? LoanStatus.paid
           : LoanStatus.partial,
     );
 
-    await FirebaseService.saveLoan(user.uid, updated);
+    await FirebaseService.saveLoan(user!.uid, updated);
   }
 
   Future<void> deleteLoan(String loanId) async {
-    final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
-    await FirebaseService.deleteLoan(user.uid, loanId);
+    await FirebaseService.deleteLoan(user!.uid, loanId);
   }
 
   @override

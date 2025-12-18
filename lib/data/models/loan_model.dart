@@ -1,5 +1,29 @@
 import 'loan_status.dart';
 
+class TransactionLog {
+  final String id;
+  final double amount;
+  final DateTime date;
+
+  TransactionLog({
+    required this.id,
+    required this.amount,
+    required this.date,
+  });
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'amount': amount,
+    'date': date.toIso8601String(),
+  };
+
+  factory TransactionLog.fromMap(Map<String, dynamic> map) => TransactionLog(
+    id: map['id'],
+    amount: (map['amount'] as num).toDouble(),
+    date: DateTime.parse(map['date']),
+  );
+}
+
 class Loan {
   final String id;
   final String customerName;
@@ -11,6 +35,7 @@ class Loan {
   final DateTime givenDate;
   final DateTime dueDate;
   final LoanStatus status;
+  final List<TransactionLog> history;
 
   Loan({
     required this.id,
@@ -23,11 +48,13 @@ class Loan {
     required this.givenDate,
     required this.dueDate,
     required this.status,
+    this.history = const [],
   });
 
   Loan copyWith({
     double? paidAmount,
     LoanStatus? status,
+    List<TransactionLog>? history,
   }) {
     return Loan(
       id: id,
@@ -40,6 +67,7 @@ class Loan {
       givenDate: givenDate,
       dueDate: dueDate,
       status: status ?? this.status,
+      history: history ?? this.history,
     );
   }
 }

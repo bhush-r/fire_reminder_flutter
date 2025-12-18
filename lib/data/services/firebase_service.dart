@@ -30,27 +30,19 @@ class FirebaseService {
   }
 
   static Future<void> saveLoan(String uid, Loan loan) async {
-    try {
-      await _getLoanCollection(uid)
-          .doc(loan.id)
-          .set(_toMap(loan));
-    } catch (e) {
-      rethrow;
-    }
+    await _getLoanCollection(uid).doc(loan.id).set(_toMap(loan));
   }
 
   static Future<void> deleteLoan(String uid, String loanId) async {
-    try {
-      await _getLoanCollection(uid)
-          .doc(loanId)
-          .delete();
-    } catch (e) {
-      rethrow;
-    }
+    await _getLoanCollection(uid).doc(loanId).delete();
   }
 
   static Loan _fromDoc(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    final historyList = (d['history'] as List? ?? [])
+        .map((h) => TransactionLog.fromMap(h as Map<String, dynamic>))
+        .toList();
+
     return Loan(
       id: doc.id,
       customerName: d['name'] ?? 'Unknown',
@@ -59,13 +51,10 @@ class FirebaseService {
       interestRate: (d['rate'] ?? 0.0).toDouble(),
       totalAmount: (d['total'] ?? 0.0).toDouble(),
       paidAmount: (d['paid'] ?? 0.0).toDouble(),
-      givenDate: d['givenDate'] != null
-          ? (d['givenDate'] as Timestamp).toDate()
-          : DateTime.now(),
-      dueDate: d['dueDate'] != null
-          ? (d['dueDate'] as Timestamp).toDate()
-          : DateTime.now(),
+      givenDate: (d['givenDate'] as Timestamp).toDate(),
+      dueDate: (d['dueDate'] as Timestamp).toDate(),
       status: LoanStatus.values.byName(d['status'] ?? 'pending'),
+      history: historyList,
     );
   }
 
@@ -79,5 +68,6 @@ class FirebaseService {
     'givenDate': Timestamp.fromDate(l.givenDate),
     'dueDate': Timestamp.fromDate(l.dueDate),
     'status': l.status.name,
+    'history': l.history.map((h) => h.toMap()).toList(),
   };
 }
