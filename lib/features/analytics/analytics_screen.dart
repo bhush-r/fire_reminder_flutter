@@ -12,6 +12,7 @@ class AnalyticsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final loans = ref.watch(loanControllerProvider);
 
     final totalPrincipal = loans.fold<double>(0, (sum, l) => sum + l.principal);
@@ -22,206 +23,180 @@ class AnalyticsScreen extends ConsumerWidget {
     final monthlyData = _groupMonthlyPending(loans);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Insight Analytics"),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 📊 SUMMARY GRID
-            Row(
-              children: [
-                Expanded(child: _summaryBox("Total Capital", totalPrincipal, AppColors.primary)),
-                const SizedBox(width: 12),
-                Expanded(child: _summaryBox("Recovered", totalPaid, AppColors.success)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _summaryBox("Total Pending", totalPending, AppColors.danger, isWide: true),
-
-            const SizedBox(height: 32),
-
-            _sectionHeader("Recovery Trend", "Monthly collection forecast"),
-            const SizedBox(height: 16),
-
-            if (monthlyData.isEmpty)
-              _emptyDataState()
-            else
-              Container(
-                height: 250,
-                padding: const EdgeInsets.only(top: 20, right: 20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    maxY: _getMaxY(monthlyData) * 1.2,
-                    barTouchData: BarTouchData(
-                      enabled: true,
-                      touchTooltipData: BarTouchTooltipData(
-                        getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                          return BarTooltipItem(
-                            '₹${rod.toY.toInt()}',
-                            const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          );
-                        },
-                      ),
-                    ),
-                    titlesData: FlTitlesData(
-                      show: true,
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            if (value < 0 || value >= monthlyData.length) return const SizedBox();
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                monthlyData[value.toInt()].month.split('/')[0],
-                                style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    ),
-                    gridData: const FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
-                    barGroups: monthlyData.asMap().entries.map((e) {
-                      return BarChartGroupData(
-                        x: e.key,
-                        barRods: [
-                          BarChartRodData(
-                            toY: e.value.amount,
-                            color: AppColors.primary,
-                            width: 16,
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                            backDrawRodData: BackgroundBarChartRodData(
-                              show: true,
-                              toY: _getMaxY(monthlyData) * 1.2,
-                              color: AppColors.primary.withValues(alpha: 0.05),
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            title: const Text("Analytics"),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildStatCard(theme, "Working Capital", totalPrincipal, AppColors.primary, Icons.account_balance_rounded),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(child: _buildMiniStat(theme, "Recovered", totalPaid, AppColors.success)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildMiniStat(theme, "Balance", totalPending, AppColors.danger)),
+                    ],
                   ),
-                ),
+                  const SizedBox(height: 40),
+                  Text("RECOVERY FORECAST", style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  if (monthlyData.isEmpty)
+                    _emptyDataState(theme)
+                  else
+                    _buildChart(theme, monthlyData),
+                  const SizedBox(height: 40),
+                  Text("REPORTS", style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  _exportTile(theme, "Excel Sheet", "Financial breakdown for accounting", Icons.table_chart_rounded, Colors.green, () => ExcelExportService.exportAllLoans(context, loans)),
+                  const SizedBox(height: 12),
+                  _exportTile(theme, "PDF Summary", "Printable collection reports", Icons.picture_as_pdf_rounded, Colors.red, () => PdfExportService.exportAllLoans(context, loans)),
+                  const SizedBox(height: 100),
+                ],
               ),
-
-            const SizedBox(height: 32),
-
-            _sectionHeader("Reports", "Download your transaction data"),
-            const SizedBox(height: 16),
-
-            _exportTile(
-              "Excel Spreadsheet",
-              "Best for accounting & detailed records",
-              Icons.table_chart_outlined,
-              Colors.green,
-                  () => ExcelExportService.exportAllLoans(context, loans),
             ),
-            const SizedBox(height: 12),
-            _exportTile(
-              "PDF Document",
-              "Best for sharing and printing reports",
-              Icons.picture_as_pdf_outlined,
-              Colors.red,
-                  () => PdfExportService.exportAllLoans(context, loans),
-            ),
-          ],
-        ),
+          )
+        ],
       ),
     );
   }
 
-  // ---------- UI COMPONENTS ----------
+  Widget _buildStatCard(ThemeData theme, String label, double value, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                const SizedBox(height: 4),
+                Text(
+                  "₹${value.toStringAsFixed(0)}",
+                  style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
+          Icon(icon, size: 40, color: color.withValues(alpha: 0.3)),
+        ],
+      ),
+    );
+  }
 
-  Widget _summaryBox(String label, double value, Color color, {bool isWide = false}) {
+  Widget _buildMiniStat(ThemeData theme, String label, double value, Color color) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.1)),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
-        crossAxisAlignment: isWide ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
+          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: AppColors.textSecondary)),
           const SizedBox(height: 4),
           Text(
             "₹${value.toStringAsFixed(0)}",
-            style: TextStyle(
-              fontSize: isWide ? 28 : 20,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-            ),
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, color: color),
           ),
         ],
       ),
     );
   }
 
-  Widget _sectionHeader(String title, String subtitle) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-      ],
+  Widget _buildChart(ThemeData theme, List<_MonthlyPending> data) {
+    return Container(
+      height: 300,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: _getMaxY(data) * 1.3,
+          titlesData: FlTitlesData(
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (v, m) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(data[v.toInt()].month.split('/')[0], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ),
+            leftTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+            topTitles: const AxisTitles(),
+          ),
+          gridData: const FlGridData(show: false),
+          borderData: FlBorderData(show: false),
+          barGroups: data.asMap().entries.map((e) => BarChartGroupData(
+            x: e.key,
+            barRods: [
+              BarChartRodData(
+                toY: e.value.amount,
+                color: theme.colorScheme.primary,
+                width: 24,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              ),
+            ],
+          )).toList(),
+        ),
+      ),
     );
   }
 
-  Widget _exportTile(String title, String sub, IconData icon, Color color, VoidCallback onTap) {
+  Widget _exportTile(ThemeData theme, String title, String sub, IconData icon, Color color, VoidCallback onTap) {
     return ListTile(
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.border),
-      ),
-      tileColor: Colors.white,
+      contentPadding: const EdgeInsets.all(12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: theme.colorScheme.outlineVariant)),
       leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
         child: Icon(icon, color: color),
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(sub, style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.chevron_right, size: 20),
+      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
     );
   }
 
-  Widget _emptyDataState() {
+  Widget _emptyDataState(ThemeData theme) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+      padding: const EdgeInsets.all(48),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(32),
+      ),
       child: const Column(
         children: [
-          Icon(Icons.bar_chart, size: 48, color: AppColors.border),
+          Icon(Icons.query_stats_rounded, size: 48, color: AppColors.border),
           SizedBox(height: 12),
-          Text("No trend data available", style: TextStyle(color: AppColors.textSecondary)),
+          Text("No data to display"),
         ],
       ),
     );
   }
 
-  // ---------- DATA HELPERS ----------
-
-  double _getMaxY(List<_MonthlyPending> data) {
-    if (data.isEmpty) return 100;
-    return data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
-  }
+  double _getMaxY(List<_MonthlyPending> data) => data.isEmpty ? 100 : data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
 
   List<_MonthlyPending> _groupMonthlyPending(List<Loan> loans) {
     final Map<String, double> map = {};
@@ -236,7 +211,6 @@ class AnalyticsScreen extends ConsumerWidget {
 }
 
 class _MonthlyPending {
-  final String month;
-  final double amount;
+  final String month; final double amount;
   _MonthlyPending({required this.month, required this.amount});
 }

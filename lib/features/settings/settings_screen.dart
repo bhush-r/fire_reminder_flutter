@@ -8,96 +8,114 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final user = ref.watch(authControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Settings")),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          // USER PROFILE SECTION
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-                  child: user?.photoURL == null ? const Icon(Icons.person) : null,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(user?.displayName ?? "User Name", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                      Text(user?.email ?? "email@example.com", style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                    ],
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            title: const Text("Settings"),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(color: theme.colorScheme.outlineVariant),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 32,
+                          backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+                          child: user?.photoURL == null ? const Icon(Icons.person, size: 32) : null,
+                        ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(user?.displayName ?? "Guest User", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                              Text(user?.email ?? "Sign in to sync data", style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ),
+                        IconButton.filledTonal(
+                          onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+                          icon: const Icon(Icons.logout_rounded, color: AppColors.danger),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.logout, color: AppColors.danger),
-                  onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
-                ),
-              ],
+                  const SizedBox(height: 40),
+                  _buildSection(theme, "PREFERENCES", [
+                    _settingsTile(theme, Icons.notifications_active_outlined, "Notifications", "Alerts for upcoming dues", hasSwitch: true),
+                    _settingsTile(theme, Icons.fingerprint_rounded, "Biometric Lock", "Secure your financial data", hasSwitch: false),
+                    _settingsTile(theme, Icons.translate_rounded, "Language", "English (Default)", hasSwitch: false),
+                  ]),
+                  const SizedBox(height: 32),
+                  _buildSection(theme, "SUPPORT", [
+                    _settingsTile(theme, Icons.cloud_done_outlined, "Cloud Backup", "Automatic sync enabled", hasSwitch: true),
+                    _settingsTile(theme, Icons.contact_support_outlined, "Support Hub", "Chat with our specialists", hasSwitch: false),
+                    _settingsTile(theme, Icons.verified_user_outlined, "Privacy", "Data encryption details", hasSwitch: false),
+                  ]),
+                  const SizedBox(height: 48),
+                  Center(
+                    child: Text("VERSION 1.2.0 • BUILD 2024", style: theme.textTheme.labelSmall?.copyWith(color: AppColors.textSecondary, letterSpacing: 1.5)),
+                  ),
+                  const SizedBox(height: 100),
+                ],
+              ),
             ),
-          ),
-
-          const SizedBox(height: 32),
-
-          _sectionTitle("App Preferences"),
-          _settingsTile(Icons.notifications_none_outlined, "Notification Reminders", "Manage payment alerts", true),
-          _settingsTile(Icons.lock_outline, "Security Lock", "App password or Fingerprint", false),
-          _settingsTile(Icons.language_outlined, "Language", "English / Hindi", false),
-
-          const SizedBox(height: 24),
-
-          _sectionTitle("Data & Support"),
-          _settingsTile(Icons.cloud_upload_outlined, "Cloud Backup", "Sync data with your account", true),
-          _settingsTile(Icons.help_outline, "Help & Support", "Contact us for issues", false),
-          _settingsTile(Icons.info_outline, "Privacy Policy", "Learn how we handle data", false),
-
-          const SizedBox(height: 40),
-
-          Center(
-            child: Text(
-              "Version 1.0.0 (Stable)",
-              style: TextStyle(color: Colors.grey[400], fontSize: 12),
-            ),
-          ),
-          const SizedBox(height: 100),
+          )
         ],
       ),
     );
   }
 
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 12),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 14)),
+  Widget _buildSection(ThemeData theme, String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 16),
+          child: Text(title, style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+        ),
+        ...children,
+      ],
     );
   }
 
-  Widget _settingsTile(IconData icon, String title, String sub, bool hasSwitch) {
+  Widget _settingsTile(ThemeData theme, IconData icon, String title, String sub, {required bool hasSwitch}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border.withOpacity(0.5)),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: ListTile(
-        leading: Icon(icon, color: AppColors.primary),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Icon(icon, color: theme.colorScheme.primary),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(sub, style: const TextStyle(fontSize: 12)),
         trailing: hasSwitch
-            ? Switch(value: true, onChanged: (v) {}, activeColor: AppColors.primary)
-            : const Icon(Icons.chevron_right, size: 20, color: AppColors.textSecondary),
+            ? Switch(value: true, onChanged: (v){})
+            : const Icon(Icons.chevron_right_rounded, size: 20),
       ),
     );
   }
