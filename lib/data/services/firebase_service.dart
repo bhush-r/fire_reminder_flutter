@@ -4,26 +4,15 @@ import '../models/loan_status.dart';
 
 class FirebaseService {
   static final _db = FirebaseFirestore.instance;
-
-  // Use the Project ID as the appId for the mandatory artifacts path structure
   static const String _appId = 'fireapp-94831';
 
   static CollectionReference _getLoanCollection(String uid) {
-    // RULE 1: Strict Paths enforced by environment
-    return _db
-        .collection('artifacts')
-        .doc(_appId)
-        .collection('users')
-        .doc(uid)
-        .collection('loans');
+    return _db.collection('artifacts').doc(_appId).collection('users').doc(uid).collection('loans');
   }
 
   static Stream<List<Loan>> listenLoans(String uid) {
-    return _getLoanCollection(uid)
-        .snapshots()
-        .map(
-          (snapshot) =>
-          snapshot.docs.map((doc) => _fromDoc(doc)).toList(),
+    return _getLoanCollection(uid).snapshots().map(
+          (snapshot) => snapshot.docs.map((doc) => _fromDoc(doc)).toList(),
     );
   }
 
@@ -37,8 +26,13 @@ class FirebaseService {
 
   static Loan _fromDoc(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
-    final historyList = (d['history'] as List? ?? [])
+
+    final history = (d['history'] as List? ?? [])
         .map((h) => TransactionLog.fromMap(h as Map<String, dynamic>))
+        .toList();
+
+    final emis = (d['emis'] as List? ?? [])
+        .map((e) => Emi.fromMap(e as Map<String, dynamic>))
         .toList();
 
     return Loan(
@@ -49,11 +43,13 @@ class FirebaseService {
       interestRate: (d['rate'] ?? 0.0).toDouble(),
       totalAmount: (d['total'] ?? 0.0).toDouble(),
       paidAmount: (d['paid'] ?? 0.0).toDouble(),
+      outstandingAmount: (d['outstanding'] ?? d['total'] ?? 0.0).toDouble(), // Fallback for old data
       givenDate: (d['givenDate'] as Timestamp).toDate(),
       dueDate: (d['dueDate'] as Timestamp).toDate(),
       status: LoanStatus.values.byName(d['status'] ?? 'pending'),
       paymentType: d['paymentType'] ?? 'Cash',
-      history: historyList,
+      history: history,
+      emis: emis,
     );
   }
 
@@ -64,10 +60,12 @@ class FirebaseService {
     'rate': l.interestRate,
     'total': l.totalAmount,
     'paid': l.paidAmount,
+    'outstanding': l.outstandingAmount,
     'givenDate': Timestamp.fromDate(l.givenDate),
     'dueDate': Timestamp.fromDate(l.dueDate),
     'status': l.status.name,
     'paymentType': l.paymentType,
     'history': l.history.map((h) => h.toMap()).toList(),
+    'emis': l.emis.map((e) => e.toMap()).toList(),
   };
 }

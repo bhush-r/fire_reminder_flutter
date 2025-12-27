@@ -7,13 +7,10 @@ import '../../data/models/loan_status.dart';
 import '../../data/services/firebase_service.dart';
 import '../auth/auth_controller.dart';
 
-final loanControllerProvider =
-StateNotifierProvider<LoanController, List<Loan>>(
-      (ref) {
-    final user = ref.watch(authControllerProvider);
-    return LoanController(ref, user);
-  },
-);
+final loanControllerProvider = StateNotifierProvider<LoanController, List<Loan>>((ref) {
+  final user = ref.watch(authControllerProvider);
+  return LoanController(ref, user);
+});
 
 class LoanController extends StateNotifier<List<Loan>> {
   final Ref ref;
@@ -21,17 +18,13 @@ class LoanController extends StateNotifier<List<Loan>> {
   StreamSubscription? _sub;
 
   LoanController(this.ref, this.user) : super([]) {
-    if (user != null) {
-      _listenToLoans();
-    }
+    if (user != null) _listenToLoans();
   }
 
   void _listenToLoans() {
     if (user == null) return;
     _sub?.cancel();
-    _sub = FirebaseService.listenLoans(user!.uid).listen(
-          (loans) => state = loans,
-    );
+    _sub = FirebaseService.listenLoans(user!.uid).listen((loans) => state = loans);
   }
 
   Future<void> saveLoan({
@@ -41,24 +34,20 @@ class LoanController extends StateNotifier<List<Loan>> {
     required double principal,
     required double rate,
     required DateTime givenDate,
-    required DateTime dueDate,
+    required int tenureMonths,
     required String paymentType,
   }) async {
     if (user == null) return;
 
-    final total = calculateTotalAmount(
+    final emis = LoanCalculator.generateAmortizationSchedule(
       principal: principal,
-      ratePerMonth: rate,
-      givenDate: givenDate,
-      dueDate: dueDate,
+      annualRate: rate,
+      startDate: givenDate,
+      tenureMonths: tenureMonths,
     );
 
-    Loan? existingLoan;
-    if (existingId != null) {
-      try {
-        existingLoan = state.firstWhere((l) => l.id == existingId);
-      } catch (_) {}
-    }
+    final totalAmount = emis.fold<double>(0, (sum, e) => sum + e.emiAmount);
+    final finalDueDate = emis.last.dueDate;
 
     final loanId = existingId ?? DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -68,38 +57,47 @@ class LoanController extends StateNotifier<List<Loan>> {
       phone: phone,
       principal: principal,
       interestRate: rate,
-      totalAmount: total,
-      paidAmount: existingLoan?.paidAmount ?? 0,
+      totalAmount: totalAmount,
+      paidAmount: 0,
+      outstandingAmount: principal,
       givenDate: givenDate,
-      dueDate: dueDate,
-      status: existingLoan?.status ?? LoanStatus.pending,
+      dueDate: finalDueDate,
+      status: LoanStatus.pending,
       paymentType: paymentType,
-      history: existingLoan?.history ?? [],
+      emis: emis,
     );
 
     await FirebaseService.saveLoan(user!.uid, loan);
   }
 
-  Future<void> recordPayment(String loanId, double amount) async {
+  Future<void> payEmi(String loanId, String emiId) async {
     if (user == null) return;
-
     final loan = state.firstWhere((l) => l.id == loanId);
-    final newPaid = loan.paidAmount + amount;
+
+    final updatedEmis = loan.emis.map((e) {
+      if (e.id == emiId && !e.isPaid) {
+        return e.copyWith(isPaid: true, paidOn: DateTime.now());
+      }
+      return e;
+    }).toList();
+
+    final paidEmi = loan.emis.firstWhere((e) => e.id == emiId);
+    final newPaidAmount = loan.paidAmount + paidEmi.emiAmount;
+    final newOutstanding = loan.outstandingAmount - paidEmi.principalPart;
 
     final log = TransactionLog(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      amount: amount,
+      amount: paidEmi.emiAmount,
       date: DateTime.now(),
+      emiId: emiId,
     );
 
-    final updatedHistory = List<TransactionLog>.from(loan.history)..add(log);
-
     final updated = loan.copyWith(
-      paidAmount: newPaid,
-      history: updatedHistory,
-      status: newPaid >= loan.totalAmount
-          ? LoanStatus.paid
-          : LoanStatus.partial,
+      paidAmount: newPaidAmount,
+      outstandingAmount: newOutstanding,
+      emis: updatedEmis,
+      history: [...loan.history, log],
+      status: newPaidAmount >= (loan.totalAmount - 0.1) ? LoanStatus.paid : LoanStatus.partial,
     );
 
     await FirebaseService.saveLoan(user!.uid, updated);

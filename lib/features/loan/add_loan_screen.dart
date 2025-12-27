@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/utils/loan_calculator.dart';
 import '../../core/utils/validators.dart';
 import '../../data/models/loan_model.dart';
@@ -22,10 +23,9 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
   late TextEditingController phoneCtrl;
   late TextEditingController principalCtrl;
   late TextEditingController rateCtrl;
+  late TextEditingController tenureCtrl;
 
   late DateTime givenDate;
-  late DateTime dueDate;
-
   String paymentType = "Cash";
 
   @override
@@ -35,24 +35,25 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
     phoneCtrl = TextEditingController(text: widget.existingLoan?.phone.replaceFirst("+91", "") ?? "");
     principalCtrl = TextEditingController(text: widget.existingLoan?.principal.toString() ?? "");
     rateCtrl = TextEditingController(text: widget.existingLoan?.interestRate.toString() ?? "");
+    tenureCtrl = TextEditingController(text: widget.existingLoan?.emis.length.toString() ?? "12");
     givenDate = widget.existingLoan?.givenDate ?? DateTime.now();
-    dueDate = widget.existingLoan?.dueDate ?? DateTime.now().add(const Duration(days: 30));
     paymentType = widget.existingLoan?.paymentType ?? "Cash";
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final totalAmount = calculateTotalAmount(
-      principal: double.tryParse(principalCtrl.text) ?? 0,
-      ratePerMonth: double.tryParse(rateCtrl.text) ?? 0,
-      givenDate: givenDate,
-      dueDate: dueDate,
-    );
+
+    final principal = double.tryParse(principalCtrl.text) ?? 0;
+    final rate = double.tryParse(rateCtrl.text) ?? 0;
+    final tenure = int.tryParse(tenureCtrl.text) ?? 0;
+
+    final emiAmount = LoanCalculator.calculateEmi(principal, rate, tenure > 0 ? tenure : 1);
+    final totalPayable = emiAmount * tenure;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existingLoan == null ? "Create New Loan" : "Edit Loan Details"),
+        title: Text(widget.existingLoan == null ? "New Loan Account" : "Edit Loan Terms"),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -64,7 +65,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             child: Text(
-              widget.existingLoan == null ? "Create Loan" : "Update Records",
+              widget.existingLoan == null ? "Disburse Loan" : "Update Agreement",
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
@@ -77,7 +78,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionHeader(theme, "Borrower Details"),
+              _buildSectionHeader(theme, "Borrower Information"),
               const SizedBox(height: 16),
               _field(
                 controller: nameCtrl,
@@ -91,7 +92,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
                 keyboardType: TextInputType.phone,
                 maxLength: 10,
                 decoration: const InputDecoration(
-                  labelText: "Phone Number",
+                  labelText: "Mobile Number",
                   prefixText: "+91 ",
                   prefixIcon: Icon(Icons.phone_outlined),
                   counterText: "",
@@ -99,86 +100,112 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
                 validator: Validators.phone10,
               ),
               const SizedBox(height: 32),
-              _buildSectionHeader(theme, "Loan Terms"),
+              _buildSectionHeader(theme, "Loan Parameters"),
+              const SizedBox(height: 16),
+              _field(
+                controller: principalCtrl,
+                label: "Principal Amount (₹)",
+                keyboard: TextInputType.number,
+                icon: Icons.account_balance_wallet_outlined,
+                validator: Validators.amount,
+                onChanged: (v) => setState(() {}),
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: _field(
-                      controller: principalCtrl,
-                      label: "Principal (₹)",
-                      keyboard: TextInputType.number,
-                      icon: Icons.account_balance_wallet_outlined,
-                      validator: Validators.amount,
-                      onChanged: (v) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _field(
                       controller: rateCtrl,
-                      label: "Interest %",
+                      label: "Annual Interest %",
                       keyboard: TextInputType.number,
                       icon: Icons.percent_rounded,
                       validator: Validators.rate,
                       onChanged: (v) => setState(() {}),
                     ),
                   ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _field(
+                      controller: tenureCtrl,
+                      label: "Tenure (Months)",
+                      keyboard: TextInputType.number,
+                      icon: Icons.calendar_today_rounded,
+                      validator: (v) => (int.tryParse(v ?? "") ?? 0) <= 0 ? "Invalid tenure" : null,
+                      onChanged: (v) => setState(() {}),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
-              _dateTile(theme, "Agreement Date", givenDate, () async {
+              _dateTile(theme, "Disbursement Date", givenDate, () async {
                 final picked = await _pickDate(context, givenDate);
                 if (picked != null) setState(() => givenDate = picked);
               }),
-              const SizedBox(height: 12),
-              _dateTile(theme, "Repayment Due Date", dueDate, () async {
-                final picked = await _pickDate(context, dueDate);
-                if (picked != null) setState(() => dueDate = picked);
-              }),
               const SizedBox(height: 24),
               DropdownButtonFormField<String>(
-                initialValue: paymentType,
+                value: paymentType,
                 items: const [
-                  DropdownMenuItem(value: "Cash", child: Text("Cash Payment")),
+                  DropdownMenuItem(value: "Cash", child: Text("Cash Basis")),
                   DropdownMenuItem(value: "Online", child: Text("Digital Transfer")),
-                  DropdownMenuItem(value: "Other", child: Text("Other Modes")),
+                  DropdownMenuItem(value: "Bank", child: Text("Bank Check")),
                 ],
                 onChanged: (v) => setState(() => paymentType = v!),
                 decoration: const InputDecoration(
-                  labelText: "Preferred Mode",
+                  labelText: "Collection Mode",
                   prefixIcon: Icon(Icons.payment_rounded),
                 ),
               ),
               const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: theme.colorScheme.primaryContainer),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Expected Total", style: theme.textTheme.labelMedium),
-                        Text(
-                          "₹${totalAmount.toStringAsFixed(2)}",
-                          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900, color: theme.colorScheme.primary),
-                        ),
-                      ],
-                    ),
-                    const Icon(Icons.info_outline_rounded, color: AppColors.primary),
-                  ],
-                ),
-              ),
+              _buildEmiPreview(theme, emiAmount, totalPayable),
               const SizedBox(height: 40),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmiPreview(ThemeData theme, double emi, double total) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.primary.withOpacity(0.1)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Monthly EMI", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  Text(
+                    "₹${emi.toStringAsFixed(2)}",
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, color: AppColors.primary),
+                  ),
+                ],
+              ),
+              const Icon(Icons.calculate_outlined, color: AppColors.primary),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Divider(),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Total Payable", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              Text(
+                "₹${total.toStringAsFixed(2)}",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -196,6 +223,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
 
   void _saveLoan() {
     if (!_formKey.currentState!.validate()) return;
+
     ref.read(loanControllerProvider.notifier).saveLoan(
       existingId: widget.existingLoan?.id,
       name: nameCtrl.text.trim(),
@@ -203,7 +231,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
       principal: double.parse(principalCtrl.text),
       rate: double.parse(rateCtrl.text),
       givenDate: givenDate,
-      dueDate: dueDate,
+      tenureMonths: int.parse(tenureCtrl.text),
       paymentType: paymentType,
     );
     Navigator.pop(context);
@@ -240,7 +268,7 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title, style: theme.textTheme.labelLarge),
         subtitle: Text(
-          "${date.day}/${date.month}/${date.year}",
+          DateFormat('dd MMMM yyyy').format(date),
           style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
         trailing: const Icon(Icons.calendar_today_rounded, size: 20),
@@ -255,12 +283,6 @@ class _AddLoanScreenState extends ConsumerState<AddLoanScreen> {
       initialDate: initial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(context).colorScheme.copyWith(primary: AppColors.primary),
-        ),
-        child: child!,
-      ),
     );
   }
 }

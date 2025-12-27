@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../data/models/loan_model.dart';
 import '../../../data/models/loan_status.dart';
 import '../loan_detail_screen.dart';
@@ -13,6 +14,7 @@ class LoanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final status = loan.calculatedStatus;
+    final nextEmi = loan.nextEmi;
 
     Color statusColor() {
       switch (status) {
@@ -24,31 +26,38 @@ class LoanCard extends StatelessWidget {
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LoanDetailScreen(loan: loan))),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(16),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
-                    radius: 24,
-                    backgroundColor: statusColor().withValues(alpha: 0.1),
+                    radius: 20,
+                    backgroundColor: statusColor().withOpacity(0.1),
                     child: Text(
                       loan.customerName[0].toUpperCase(),
                       style: TextStyle(color: statusColor(), fontWeight: FontWeight.bold),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,30 +76,37 @@ class LoanCard extends StatelessWidget {
                   _buildBadge(status.name, statusColor()),
                 ],
               ),
-              const SizedBox(height: 10),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Divider(height: 1),
+              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _amountDetail(theme, "Remaining", "₹${loan.remainingAmount.toStringAsFixed(0)}", statusColor(), isPrimary: true),
-                  _amountDetail(theme, "Total", "₹${loan.totalAmount.toStringAsFixed(0)}", AppColors.textSecondary),
-                  _amountDetail(theme, "Paid", "₹${loan.paidAmount.toStringAsFixed(0)}", AppColors.textSecondary),
+                  _amountDetail(theme, "Principal", "₹${loan.principal.toInt()}", AppColors.textPrimary),
+                  _amountDetail(theme, "Outstanding", "₹${loan.outstandingAmount.toInt()}", statusColor(), isPrimary: true),
                 ],
               ),
-              if (loan.overdueDays > 0) ...[
+              if (nextEmi != null) ...[
                 const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.danger.withValues(alpha: 0.05),
+                    color: AppColors.primary.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.danger),
+                      Icon(Icons.event_repeat_rounded, size: 16, color: AppColors.primary.withOpacity(0.7)),
                       const SizedBox(width: 8),
                       Text(
-                        "Overdue by ${loan.overdueDays} days",
-                        style: theme.textTheme.bodySmall?.copyWith(color: AppColors.danger, fontWeight: FontWeight.bold),
+                        "Next EMI: ₹${nextEmi.emiAmount.toInt()}",
+                        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      Text(
+                        DateFormat('dd MMM').format(nextEmi.dueDate),
+                        style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -105,21 +121,21 @@ class LoanCard extends StatelessWidget {
 
   Widget _buildBadge(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label.toUpperCase(),
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5),
       ),
     );
   }
 
   Widget _amountDetail(ThemeData theme, String label, String value, Color color, {bool isPrimary = false}) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: isPrimary ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         Text(label, style: theme.textTheme.labelSmall?.copyWith(color: AppColors.textSecondary)),
         const SizedBox(height: 2),
@@ -127,7 +143,7 @@ class LoanCard extends StatelessWidget {
           value,
           style: theme.textTheme.titleMedium?.copyWith(
             color: isPrimary ? color : AppColors.textPrimary,
-            fontWeight: isPrimary ? FontWeight.w900 : FontWeight.bold,
+            fontWeight: FontWeight.w900,
             fontSize: isPrimary ? 18 : 14,
           ),
         ),
