@@ -1,23 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+
+import '../../core/theme/app_colors.dart';
 import '../../data/models/loan_model.dart';
 import '../../data/services/excel_export_service.dart';
 import '../../data/services/pdf_export_service.dart';
-import '../../core/theme/app_colors.dart';
 import '../loan/loan_controller.dart';
 
-class AnalyticsScreen extends ConsumerWidget {
+class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
+
+class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
+  bool _exporting = false;
+
+  Future<void> _runExport(Future<void> Function() task) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+
+    // Simple blocking loader (smooth UX)
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Expanded(child: Text("Preparing report…")),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      await task();
+      if (!mounted) return;
+      Navigator.pop(context); // close loader
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // close loader
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Export failed: $e"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final loans = ref.watch(loanControllerProvider);
 
-    final totalPrincipal = loans.fold<double>(0, (sum, l) => sum + l.principal);
-    final totalExpected = loans.fold<double>(0, (sum, l) => sum + l.totalAmount);
-    final totalPending = loans.fold<double>(0, (sum, l) => sum + (l.totalAmount - l.paidAmount));
+    final totalPrincipal =
+    loans.fold<double>(0, (sum, l) => sum + l.principal);
+    final totalExpected =
+    loans.fold<double>(0, (sum, l) => sum + l.totalAmount);
+    final totalPending = loans.fold<double>(
+        0, (sum, l) => sum + (l.totalAmount - l.paidAmount));
     final totalPaid = totalExpected - totalPending;
 
     final monthlyData = _groupMonthlyPending(loans);
@@ -34,28 +86,56 @@ class AnalyticsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildStatCard(theme, "Working Capital", totalPrincipal, AppColors.primary, Icons.account_balance_rounded),
+                  _buildStatCard(theme, "Working Capital", totalPrincipal,
+                      AppColors.primary, Icons.account_balance_rounded),
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(child: _buildMiniStat(theme, "Recovered", totalPaid, AppColors.success)),
+                      Expanded(
+                          child: _buildMiniStat(theme, "Recovered", totalPaid,
+                              AppColors.success)),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildMiniStat(theme, "Balance", totalPending, AppColors.danger)),
+                      Expanded(
+                          child: _buildMiniStat(theme, "Balance", totalPending,
+                              AppColors.danger)),
                     ],
                   ),
                   const SizedBox(height: 40),
-                  Text("RECOVERY FORECAST", style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+                  Text(
+                    "RECOVERY FORECAST",
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  if (monthlyData.isEmpty)
-                    _emptyDataState(theme)
-                  else
-                    _buildChart(theme, monthlyData),
+                  if (monthlyData.isEmpty) _emptyDataState(theme) else _buildChart(theme, monthlyData),
                   const SizedBox(height: 40),
-                  Text("REPORTS", style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+                  Text(
+                    "REPORTS",
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  _exportTile(theme, "Excel Sheet", "Financial breakdown for accounting", Icons.table_chart_rounded, Colors.green, () => ExcelExportService.exportAllLoans(context, loans)),
+                  _exportTile(
+                    theme,
+                    "Excel Sheet",
+                    "Financial breakdown for accounting",
+                    Icons.table_chart_rounded,
+                    Colors.green,
+                        () => _runExport(() => ExcelExportService.exportAllLoans(context, loans)),
+                  ),
                   const SizedBox(height: 12),
-                  _exportTile(theme, "PDF Summary", "Printable collection reports", Icons.picture_as_pdf_rounded, Colors.red, () => PdfExportService.exportAllLoans(context, loans)),
+                  _exportTile(
+                    theme,
+                    "PDF Summary",
+                    "Printable collection reports",
+                    Icons.picture_as_pdf_rounded,
+                    Colors.red,
+                        () => _runExport(() => PdfExportService.exportAllLoans(context, loans)),
+                  ),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -66,7 +146,8 @@ class AnalyticsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatCard(ThemeData theme, String label, double value, Color color, IconData icon) {
+  Widget _buildStatCard(ThemeData theme, String label, double value, Color color,
+      IconData icon) {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
@@ -80,11 +161,18 @@ class AnalyticsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                Text(label,
+                    style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5)),
                 const SizedBox(height: 4),
                 Text(
                   "₹${value.toStringAsFixed(0)}",
-                  style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ],
             ),
@@ -106,11 +194,14 @@ class AnalyticsScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: AppColors.textSecondary)),
+          Text(label,
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: AppColors.textSecondary)),
           const SizedBox(height: 4),
           Text(
             "₹${value.toStringAsFixed(0)}",
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, color: color),
+            style: theme.textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w900, color: color),
           ),
         ],
       ),
@@ -136,7 +227,11 @@ class AnalyticsScreen extends ConsumerWidget {
                 showTitles: true,
                 getTitlesWidget: (v, m) => Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(data[v.toInt()].month.split('/')[0], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    data[v.toInt()].month.split('/')[0],
+                    style: const TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ),
@@ -162,19 +257,32 @@ class AnalyticsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _exportTile(ThemeData theme, String title, String sub, IconData icon, Color color, VoidCallback onTap) {
+  Widget _exportTile(ThemeData theme, String title, String sub, IconData icon,
+      Color color, VoidCallback onTap) {
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.all(12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: theme.colorScheme.outlineVariant)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
       leading: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+        ),
         child: Icon(icon, color: color),
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(sub, style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+      trailing: _exporting
+          ? const SizedBox(
+        height: 18,
+        width: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      )
+          : const Icon(Icons.arrow_forward_ios_rounded, size: 16),
     );
   }
 
@@ -196,7 +304,8 @@ class AnalyticsScreen extends ConsumerWidget {
     );
   }
 
-  double _getMaxY(List<_MonthlyPending> data) => data.isEmpty ? 100 : data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
+  double _getMaxY(List<_MonthlyPending> data) =>
+      data.isEmpty ? 100 : data.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
 
   List<_MonthlyPending> _groupMonthlyPending(List<Loan> loans) {
     final Map<String, double> map = {};
@@ -211,6 +320,7 @@ class AnalyticsScreen extends ConsumerWidget {
 }
 
 class _MonthlyPending {
-  final String month; final double amount;
+  final String month;
+  final double amount;
   _MonthlyPending({required this.month, required this.amount});
 }

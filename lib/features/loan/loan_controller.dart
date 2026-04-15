@@ -1,31 +1,55 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/utils/loan_calculator.dart';
 import '../../data/models/loan_model.dart';
 import '../../data/models/loan_status.dart';
 import '../../data/services/firebase_service.dart';
 import '../auth/auth_controller.dart';
 
-final loanControllerProvider = StateNotifierProvider<LoanController, List<Loan>>((ref) {
-  final user = ref.watch(authControllerProvider);
-  return LoanController(ref, user);
+final loanControllerProvider =
+StateNotifierProvider<LoanController, List<Loan>>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  final user = auth.valueOrNull; // User? (null during loading/error)
+  return LoanController(ref: ref, user: user);
 });
 
 class LoanController extends StateNotifier<List<Loan>> {
-  final Ref ref;
-  final User? user;
-  StreamSubscription? _sub;
-
-  LoanController(this.ref, this.user) : super([]) {
-    if (user != null) _listenToLoans();
+  LoanController({
+    required this.ref,
+    required User? user,
+  })  : _user = user,
+        super(const []) {
+    _syncSubscription();
   }
 
-  void _listenToLoans() {
-    if (user == null) return;
+  final Ref ref;
+  User? _user;
+
+  StreamSubscription<List<Loan>>? _sub;
+
+  void _syncSubscription() {
     _sub?.cancel();
-    _sub = FirebaseService.listenLoans(user!.uid).listen((loans) => state = loans);
+    _sub = null;
+    state = const [];
+
+    final user = _user;
+    if (user == null) return;
+
+    _sub = FirebaseService.listenLoans(user.uid).listen((loans) {
+      state = loans;
+    });
+  }
+
+  /// If your UI rebuilds providers when auth changes, this controller will be recreated.
+  /// But if you later convert this to keepAlive, this method is still useful.
+  void updateUser(User? user) {
+    if (_user?.uid == user?.uid) return;
+    _user = user;
+    _syncSubscription();
   }
 
   /// SMART MANUAL PAYMENT ENGINE
@@ -36,23 +60,27 @@ class LoanController extends StateNotifier<List<Loan>> {
     required double amount,
     String? remarks,
   }) async {
+    final user = _user;
     if (user == null || amount <= 0 || loan.isPaid) return;
 
     double remainingToAllocate = amount;
-    List<Emi> updatedEmis = List.from(loan.emis);
+    final updatedEmis = List<Emi>.from(loan.emis);
 
     // 1. Allocate to existing EMIs based on chronological order (FIFO)
     for (int i = 0; i < updatedEmis.length; i++) {
       if (remainingToAllocate <= 0) break;
 
-      Emi emi = updatedEmis[i];
+      final emi = updatedEmis[i];
       if (emi.isPaid) continue;
 
       // Calculate how much this specific EMI still needs
-      double emiRemainingBalance = emi.emiAmount - emi.paidAmount;
-      double allocationToThisEmi = math.min(remainingToAllocate, emiRemainingBalance);
+      final emiRemainingBalance = emi.emiAmount - emi.paidAmount;
 
-      double newPaidAmountForEmi = emi.paidAmount + allocationToThisEmi;
+      // NOTE: math.min returns num => convert to double to avoid type issues
+      final allocationToThisEmi =
+      math.min(remainingToAllocate, emiRemainingBalance).toDouble();
+
+      final newPaidAmountForEmi = emi.paidAmount + allocationToThisEmi;
 
       updatedEmis[i] = emi.copyWith(
         paidAmount: newPaidAmountForEmi,
@@ -66,8 +94,11 @@ class LoanController extends StateNotifier<List<Loan>> {
 
     // 2. Principal Reduction Logic
     // If money remains after all EMIs are cleared, it goes straight to Principal
-    double principalReduction = remainingToAllocate;
-    double newOutstanding = math.max(0, loan.outstandingAmount - principalReduction);
+    final principalReduction = remainingToAllocate;
+
+    // NOTE: math.max returns num => convert to double to avoid type issues
+    final newOutstanding =
+    math.max(0, loan.outstandingAmount - principalReduction).toDouble();
 
     // 3. Create Audit Trail
     final log = TransactionLog(
@@ -82,7 +113,8 @@ class LoanController extends StateNotifier<List<Loan>> {
 
     // 4. Lifecycle Management
     // A loan is closed if Total Paid matches Total Amount OR Principal is zero
-    final isFullySettled = newTotalPaid >= (loan.totalAmount - 0.01) || newOutstanding <= 0.01;
+    final isFullySettled =
+        newTotalPaid >= (loan.totalAmount - 0.01) || newOutstanding <= 0.01;
 
     final updatedLoan = loan.copyWith(
       paidAmount: newTotalPaid,
@@ -92,12 +124,14 @@ class LoanController extends StateNotifier<List<Loan>> {
       status: isFullySettled ? LoanStatus.paid : LoanStatus.partial,
     );
 
-    await FirebaseService.saveLoan(user!.uid, updatedLoan);
+    await FirebaseService.saveLoan(user.uid, updatedLoan);
   }
 
   /// Keeps compatibility with "Mark Paid" button on specific EMIs
   Future<void> payEmi(String loanId, String emiId) async {
+    final user = _user;
     if (user == null) return;
+
     final loan = state.firstWhere((l) => l.id == loanId);
     final emi = loan.emis.firstWhere((e) => e.id == emiId);
 
@@ -105,9 +139,9 @@ class LoanController extends StateNotifier<List<Loan>> {
 
     // We use the smart engine to pay exactly what's needed for this EMI
     await recordManualPayment(
-        loan: loan,
-        amount: emi.emiAmount - emi.paidAmount,
-        remarks: "Direct EMI payment: ${emi.id}"
+      loan: loan,
+      amount: (emi.emiAmount - emi.paidAmount).toDouble(),
+      remarks: "Direct EMI payment: ${emi.id}",
     );
   }
 
@@ -121,29 +155,37 @@ class LoanController extends StateNotifier<List<Loan>> {
     required int tenureMonths,
     required String paymentType,
   }) async {
+    final user = _user;
     if (user == null) return;
 
+    final principalD = principal.toDouble();
+    final rateD = rate.toDouble();
+
     final emis = LoanCalculator.generateAmortizationSchedule(
-      principal: principal,
-      annualRate: rate,
+      principal: principalD,
+      annualRate: rateD,
       startDate: givenDate,
       tenureMonths: tenureMonths,
     );
 
-    final totalAmount = emis.fold<double>(0, (sum, e) => sum + e.emiAmount);
+    final totalAmount = emis.fold<double>(
+      0.0,
+          (sum, e) => sum + e.emiAmount.toDouble(),
+    );
     final finalDueDate = emis.last.dueDate;
 
-    final loanId = existingId ?? DateTime.now().millisecondsSinceEpoch.toString();
+    final loanId =
+        existingId ?? DateTime.now().millisecondsSinceEpoch.toString();
 
     final loan = Loan(
       id: loanId,
       customerName: name,
       phone: phone,
-      principal: principal,
-      interestRate: rate,
+      principal: principalD,
+      interestRate: rateD,
       totalAmount: totalAmount,
-      paidAmount: 0,
-      outstandingAmount: principal,
+      paidAmount: 0.0,
+      outstandingAmount: principalD,
       givenDate: givenDate,
       dueDate: finalDueDate,
       status: LoanStatus.pending,
@@ -151,12 +193,13 @@ class LoanController extends StateNotifier<List<Loan>> {
       emis: emis,
     );
 
-    await FirebaseService.saveLoan(user!.uid, loan);
+    await FirebaseService.saveLoan(user.uid, loan);
   }
 
   Future<void> deleteLoan(String loanId) async {
+    final user = _user;
     if (user == null) return;
-    await FirebaseService.deleteLoan(user!.uid, loanId);
+    await FirebaseService.deleteLoan(user.uid, loanId);
   }
 
   @override
