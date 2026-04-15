@@ -43,7 +43,7 @@ class FirebaseService {
       interestRate: (d['rate'] ?? 0.0).toDouble(),
       totalAmount: (d['total'] ?? 0.0).toDouble(),
       paidAmount: (d['paid'] ?? 0.0).toDouble(),
-      outstandingAmount: (d['outstanding'] ?? d['total'] ?? 0.0).toDouble(), // Fallback for old data
+      outstandingAmount: (d['outstanding'] ?? d['total'] ?? 0.0).toDouble(),
       givenDate: (d['givenDate'] as Timestamp).toDate(),
       dueDate: (d['dueDate'] as Timestamp).toDate(),
       status: LoanStatus.values.byName(d['status'] ?? 'pending'),

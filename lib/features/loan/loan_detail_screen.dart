@@ -18,9 +18,9 @@ class LoanDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final latestLoans = ref.watch(loanControllerProvider);
 
-    // Ensure we are working with the latest state of this loan from the provider
+    // Watch the latest state of this specific loan from the controller
+    final latestLoans = ref.watch(loanControllerProvider);
     final currentLoan = latestLoans.firstWhere(
             (l) => l.id == loan.id,
         orElse: () => loan
@@ -47,6 +47,26 @@ class LoanDetailScreen extends ConsumerWidget {
           const SizedBox(width: 8),
         ],
       ),
+
+      // 1️⃣ FIXED BOTTOM BUTTON
+      // Hidden automatically if the loan is CLOSED (PAID)
+      bottomNavigationBar: currentLoan.status != LoanStatus.paid
+          ? SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: FilledButton.icon(
+            onPressed: () => _showManualPaymentDialog(context, ref, currentLoan),
+            icon: const Icon(Icons.payments_outlined),
+            label: const Text("Record Manual Payment", style: TextStyle(fontWeight: FontWeight.bold)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      )
+          : null,
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -58,10 +78,13 @@ class LoanDetailScreen extends ConsumerWidget {
             _buildActionRow(theme, currentLoan),
             const SizedBox(height: 32),
             _buildEmiSchedule(theme, ref, currentLoan),
+
+            // Show transaction history if any payments exist
             if (currentLoan.history.isNotEmpty) ...[
               const SizedBox(height: 32),
               _buildTransactionHistory(theme, currentLoan),
             ],
+
             const SizedBox(height: 40),
             _buildExportSection(context, currentLoan),
             const SizedBox(height: 40),
@@ -70,6 +93,93 @@ class LoanDetailScreen extends ConsumerWidget {
       ),
     );
   }
+
+  // 2️⃣ PAYMENT DIALOG & 3️⃣ VALIDATION
+  void _showManualPaymentDialog(BuildContext context, WidgetRef ref, Loan loan) {
+    final amountController = TextEditingController();
+    final remarkController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Record Manual Payment"),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Amount will be allocated to overdue EMIs first, then principal.",
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: "Payment Amount (₹)",
+                  prefixIcon: Icon(Icons.currency_rupee_rounded),
+                  hintText: "Enter amount",
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return "Please enter an amount";
+                  final amount = double.tryParse(value);
+                  if (amount == null || amount <= 0) return "Enter a valid positive amount";
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: remarkController,
+                decoration: const InputDecoration(
+                  labelText: "Remark (Optional)",
+                  prefixIcon: Icon(Icons.note_alt_outlined),
+                  hintText: "Cash / UPI / Agent Name",
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          // 4️⃣ ACTION ON SAVE
+          FilledButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                final amount = double.parse(amountController.text);
+
+                // Call the Smart Allocation Logic from Controller
+                await ref.read(loanControllerProvider.notifier).recordManualPayment(
+                  loan: loan,
+                  amount: amount,
+                  remarks: remarkController.text.trim().isEmpty ? null : remarkController.text.trim(),
+                );
+
+                if (context.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Payment recorded and allocated successfully"),
+                      backgroundColor: AppColors.success,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text("Save Payment"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- REUSED UI COMPONENTS (UNCHANGED LOGIC) ---
 
   Widget _buildProfileHeader(ThemeData theme, Loan loan, LoanStatus status, Color color) {
     return Column(
@@ -111,35 +221,19 @@ class LoanDetailScreen extends ConsumerWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
       ),
       child: Column(
         children: [
-          const Text(
-              "OUTSTANDING PRINCIPAL",
-              style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)
-          ),
+          const Text("OUTSTANDING PRINCIPAL", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
           const SizedBox(height: 4),
-          Text(
-              "₹${loan.outstandingAmount.toStringAsFixed(2)}",
-              style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Divider(color: Colors.white24, height: 1),
-          ),
+          Text("₹${loan.outstandingAmount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)),
+          const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(color: Colors.white24, height: 1)),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _statItem("Interest Rate", "${loan.interestRate}%"),
               _statItem("Total Paid", "₹${loan.paidAmount.toInt()}"),
-              _statItem("Tenure", "${loan.emis.length} Mo"),
+              _statItem("Remaining", "₹${loan.remainingTotal.toInt()}"),
+              _statItem("Status", loan.status.name.toUpperCase()),
             ],
           )
         ],
@@ -152,7 +246,7 @@ class LoanDetailScreen extends ConsumerWidget {
       children: [
         Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
         const SizedBox(height: 2),
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
       ],
     );
   }
@@ -160,52 +254,21 @@ class LoanDetailScreen extends ConsumerWidget {
   Widget _buildActionRow(ThemeData theme, Loan loan) {
     return Row(
       children: [
-        Expanded(
-          child: _actionButton(
-              theme,
-              Icons.phone_in_talk_rounded,
-              "Call",
-              AppColors.info,
-                  () => WhatsAppUtil.call(loan.phone)
-          ),
-        ),
+        Expanded(child: _actionBtn(Icons.phone_in_talk_rounded, "Call", AppColors.info, () => WhatsAppUtil.call(loan.phone))),
         const SizedBox(width: 16),
-        Expanded(
-          child: _actionButton(
-              theme,
-              Icons.message_rounded,
-              "Remind",
-              AppColors.success,
-                  () => WhatsAppUtil.sendReminder(
-                  phone: loan.phone,
-                  name: loan.customerName,
-                  pending: loan.remainingTotal,
-                  daysRemaining: loan.overdueDays
-              )
-          ),
-        ),
+        Expanded(child: _actionBtn(Icons.message_rounded, "Remind", AppColors.success, () => WhatsAppUtil.sendReminder(phone: loan.phone, name: loan.customerName, pending: loan.remainingTotal, daysRemaining: loan.overdueDays))),
       ],
     );
   }
 
-  Widget _actionButton(ThemeData theme, IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _actionBtn(IconData icon, String label, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.1)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-          ],
-        ),
+        decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.1))),
+        child: Column(children: [Icon(icon, color: color), const SizedBox(height: 4), Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))]),
       ),
     );
   }
@@ -214,19 +277,7 @@ class LoanDetailScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-                "REPAYMENT SCHEDULE",
-                style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 0.5)
-            ),
-            Text(
-                "${loan.emis.where((e) => e.isPaid).length}/${loan.emis.length} Paid",
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)
-            ),
-          ],
-        ),
+        Text("REPAYMENT SCHEDULE", style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         ListView.separated(
           shrinkWrap: true,
@@ -235,74 +286,26 @@ class LoanDetailScreen extends ConsumerWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             final emi = loan.emis[index];
-            final statusColor = _getEmiStatusColor(emi.status);
-
             return Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: emi.isPaid
-                        ? AppColors.success.withOpacity(0.2)
-                        : theme.colorScheme.outlineVariant.withOpacity(0.5)
-                ),
+                border: Border.all(color: emi.isPaid ? AppColors.success.withOpacity(0.2) : theme.dividerColor.withOpacity(0.1)),
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: (emi.isPaid ? AppColors.success : AppColors.primary).withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                          "${index + 1}",
-                          style: TextStyle(
-                              color: emi.isPaid ? AppColors.success : AppColors.primary,
-                              fontWeight: FontWeight.bold
-                          )
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
+                  CircleAvatar(radius: 18, backgroundColor: (emi.isPaid ? AppColors.success : AppColors.primary).withOpacity(0.1), child: Text("${index + 1}", style: TextStyle(color: emi.isPaid ? AppColors.success : AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12))),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                            DateFormat('dd MMMM yyyy').format(emi.dueDate),
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)
-                        ),
-                        const SizedBox(height: 2),
-                        _statusBadge(emi.status.name, statusColor),
+                        Text(DateFormat('dd MMM yyyy').format(emi.dueDate), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(emi.status.name.toUpperCase(), style: TextStyle(fontSize: 10, color: _getStatusColor(loan.status), fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                          "₹${emi.emiAmount.toStringAsFixed(2)}",
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                              color: emi.isPaid ? AppColors.success : AppColors.textPrimary
-                          )
-                      ),
-                      if (!emi.isPaid)
-                        TextButton(
-                          onPressed: () => _confirmEmiPayment(context, ref, loan.id, emi),
-                          style: TextButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                          ),
-                          child: const Text("Mark Paid", style: TextStyle(fontSize: 12)),
-                        ),
-                    ],
-                  ),
+                  Text("₹${emi.emiAmount.toInt()}", style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
             );
@@ -316,27 +319,14 @@ class LoanDetailScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-            "RECENT TRANSACTIONS",
-            style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 0.5)
-        ),
+        Text("TRANSACTION HISTORY", style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        ...loan.history.reversed.take(5).map((tx) => Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const CircleAvatar(
-              backgroundColor: AppColors.success,
-              radius: 18,
-              child: Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 18),
-            ),
-            title: const Text("Payment Received", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            subtitle: Text(DateFormat('dd MMM, hh:mm a').format(tx.date), style: const TextStyle(fontSize: 12)),
-            trailing: Text(
-                "+ ₹${tx.amount.toInt()}",
-                style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 16)
-            ),
-          ),
+        ...loan.history.reversed.take(5).map((tx) => ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.history_edu_rounded, color: AppColors.primary),
+          title: Text("Received ₹${tx.amount.toInt()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          subtitle: Text(DateFormat('dd MMM, hh:mm a').format(tx.date)),
+          trailing: tx.remarks != null ? Text(tx.remarks!, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)) : null,
         )),
       ],
     );
@@ -345,50 +335,10 @@ class LoanDetailScreen extends ConsumerWidget {
   Widget _buildExportSection(BuildContext context, Loan loan) {
     return Row(
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => ExcelExportService.exportSingleLoan(context, loan),
-            icon: const Icon(Icons.table_rows_rounded, size: 18),
-            label: const Text("Excel"),
-          ),
-        ),
+        Expanded(child: OutlinedButton.icon(onPressed: () => ExcelExportService.exportSingleLoan(context, loan), icon: const Icon(Icons.table_rows_rounded), label: const Text("Excel"))),
         const SizedBox(width: 12),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => PdfExportService.exportSingleLoan(context, loan),
-            icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-            label: const Text("PDF"),
-          ),
-        ),
+        Expanded(child: OutlinedButton.icon(onPressed: () => PdfExportService.exportSingleLoan(context, loan), icon: const Icon(Icons.picture_as_pdf_rounded), label: const Text("PDF"))),
       ],
-    );
-  }
-
-  void _confirmEmiPayment(BuildContext context, WidgetRef ref, String loanId, Emi emi) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Record EMI Payment"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Confirm payment for installment due on ${DateFormat('dd MMM yyyy').format(emi.dueDate)}."),
-            const SizedBox(height: 12),
-            Text("Amount: ₹${emi.emiAmount.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          FilledButton(
-            onPressed: () {
-              ref.read(loanControllerProvider.notifier).payEmi(loanId, emi.id);
-              Navigator.pop(ctx);
-            },
-            child: const Text("Confirm"),
-          ),
-        ],
-      ),
     );
   }
 
@@ -397,18 +347,10 @@ class LoanDetailScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Delete Loan?"),
-        content: const Text("This will permanently remove this loan record and all associated payment history. This action cannot be undone."),
+        content: const Text("This action cannot be undone."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
-              ref.read(loanControllerProvider.notifier).deleteLoan(loan.id);
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            },
-            child: const Text("Delete Record"),
-          ),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: AppColors.danger), onPressed: () { ref.read(loanControllerProvider.notifier).deleteLoan(loan.id); Navigator.pop(ctx); Navigator.pop(context); }, child: const Text("Delete")),
         ],
       ),
     );
@@ -421,28 +363,5 @@ class LoanDetailScreen extends ConsumerWidget {
       case LoanStatus.partial: return AppColors.warning;
       default: return AppColors.primary;
     }
-  }
-
-  Color _getEmiStatusColor(EmiStatus s) {
-    switch (s) {
-      case EmiStatus.paid: return AppColors.success;
-      case EmiStatus.overdue: return AppColors.danger;
-      case EmiStatus.due: return AppColors.warning;
-      default: return AppColors.info;
-    }
-  }
-
-  Widget _statusBadge(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-          label.toUpperCase(),
-          style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.bold)
-      ),
-    );
   }
 }

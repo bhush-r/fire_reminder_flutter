@@ -1,6 +1,7 @@
 import 'loan_status.dart';
 
-enum EmiStatus { upcoming, due, overdue, paid }
+/// Added partiallyPaid to support bank-grade partial recovery
+enum EmiStatus { upcoming, due, overdue, partiallyPaid, paid }
 
 class Emi {
   final String id;
@@ -9,6 +10,7 @@ class Emi {
   final double principalPart;
   final double interestPart;
   final bool isPaid;
+  final double paidAmount; // Added: Track exactly how much of this EMI is recovered
   final DateTime? paidOn;
   final double penalty;
 
@@ -19,12 +21,16 @@ class Emi {
     required this.principalPart,
     required this.interestPart,
     this.isPaid = false,
+    this.paidAmount = 0.0, // Default to zero
     this.paidOn,
     this.penalty = 0.0,
   });
 
+  /// Smart status getter: Priority is given to payment status, then date-based status
   EmiStatus get status {
-    if (isPaid) return EmiStatus.paid;
+    if (isPaid || paidAmount >= (emiAmount - 0.01)) return EmiStatus.paid;
+    if (paidAmount > 0) return EmiStatus.partiallyPaid;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
@@ -40,6 +46,7 @@ class Emi {
     'principalPart': principalPart,
     'interestPart': interestPart,
     'isPaid': isPaid,
+    'paidAmount': paidAmount, // Persist paid amount
     'paidOn': paidOn?.toIso8601String(),
     'penalty': penalty,
   };
@@ -51,11 +58,12 @@ class Emi {
     principalPart: (map['principalPart'] as num).toDouble(),
     interestPart: (map['interestPart'] as num).toDouble(),
     isPaid: map['isPaid'] ?? false,
+    paidAmount: (map['paidAmount'] as num? ?? 0.0).toDouble(),
     paidOn: map['paidOn'] != null ? DateTime.parse(map['paidOn']) : null,
     penalty: (map['penalty'] as num? ?? 0.0).toDouble(),
   );
 
-  Emi copyWith({bool? isPaid, DateTime? paidOn, double? penalty}) {
+  Emi copyWith({bool? isPaid, double? paidAmount, DateTime? paidOn, double? penalty}) {
     return Emi(
       id: id,
       dueDate: dueDate,
@@ -63,6 +71,7 @@ class Emi {
       principalPart: principalPart,
       interestPart: interestPart,
       isPaid: isPaid ?? this.isPaid,
+      paidAmount: paidAmount ?? this.paidAmount,
       paidOn: paidOn ?? this.paidOn,
       penalty: penalty ?? this.penalty,
     );
@@ -73,13 +82,17 @@ class TransactionLog {
   final String id;
   final double amount;
   final DateTime date;
-  final String? emiId; // Link payment to specific EMI
+  final String? emiId;
+  final String type; // Added: 'emiPayment' or 'manualPayment'
+  final String? remarks; // Added: For custom payment notes
 
   TransactionLog({
     required this.id,
     required this.amount,
     required this.date,
     this.emiId,
+    this.type = 'emiPayment',
+    this.remarks,
   });
 
   Map<String, dynamic> toMap() => {
@@ -87,6 +100,8 @@ class TransactionLog {
     'amount': amount,
     'date': date.toIso8601String(),
     'emiId': emiId,
+    'type': type,
+    'remarks': remarks,
   };
 
   factory TransactionLog.fromMap(Map<String, dynamic> map) => TransactionLog(
@@ -94,6 +109,8 @@ class TransactionLog {
     amount: (map['amount'] as num).toDouble(),
     date: DateTime.parse(map['date']),
     emiId: map['emiId'],
+    type: map['type'] ?? 'emiPayment',
+    remarks: map['remarks'],
   );
 }
 
@@ -105,13 +122,13 @@ class Loan {
   final double interestRate;
   final double totalAmount;
   final double paidAmount;
-  final double outstandingAmount; // New: Remaining Principal
+  final double outstandingAmount;
   final DateTime givenDate;
   final DateTime dueDate;
   final LoanStatus status;
   final String paymentType;
   final List<TransactionLog> history;
-  final List<Emi> emis; // New: Amortization Schedule
+  final List<Emi> emis;
 
   Loan({
     required this.id,
